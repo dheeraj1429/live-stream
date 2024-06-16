@@ -3,6 +3,7 @@ import { VideoTranscoderModule } from './video-transcoder.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import { KAFKA_SERVICES } from '@app/common';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(VideoTranscoderModule);
@@ -19,6 +20,8 @@ async function bootstrap() {
       },
     },
   });
+
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
   await app.startAllMicroservices();
 }
 
