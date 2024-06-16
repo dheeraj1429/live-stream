@@ -11,7 +11,7 @@ import { SocketGatewayModule } from './socket-gateway';
       envFilePath: ['.env'],
       validationSchema: joi.object({
         PORT: joi.number().required(),
-        KAFKA_BROKER_ID_0: joi.string().required(),
+        BROKER_0_URI: joi.string().required(),
       }),
     }),
     SocketGatewayModule,

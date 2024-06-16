@@ -8,9 +8,9 @@ import * as joi from 'joi';
     ConfigModule,
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.evn'],
+      envFilePath: ['.env'],
       validationSchema: joi.object({
-        KAFKA_BROKER_ID_0: joi.string().required(),
+        BROKER_0_URI: joi.string().required(),
       }),
     }),
     VideoTranscodeModule,

@@ -15,7 +15,7 @@ import { KAFKA_SERVICES } from '@app/common';
             options: {
               client: {
                 clientId: KAFKA_SERVICES.VIDEO_TRANSCODE_SERVICE_CLIENT_ID,
-                brokers: [ConfigService.get('KAFKA_BROKER_ID_0')],
+                brokers: [ConfigService.get('BROKER_0_URI')],
               },
               consumer: {
                 groupId: KAFKA_SERVICES.VIDEO_TRANSCODE_SERVICE_GROUP_ID,
