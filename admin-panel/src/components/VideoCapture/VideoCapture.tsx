@@ -59,8 +59,13 @@ export const VideoCapture: React.FC = () => {
     }
   };
 
-  const handlerIsLiveStream = () => {
-    setIsLive(!isLive);
+  const goLive = () => {
+    setIsLive(true);
+  };
+
+  const stopStreamVideo = () => {
+    setIsLive(false);
+    socket.emit(EVENTS.STORE_LIVE_STREAM);
   };
 
   useEffect(() => {
@@ -77,13 +82,13 @@ export const VideoCapture: React.FC = () => {
       <video ref={videoRef} width="640" height="480" />
       {isLive ? (
         <button
-          onClick={handlerIsLiveStream}
+          onClick={stopStreamVideo}
           className="bg-red-500 mt-2 text-white font-bold py-2 px-4 rounded">
-          GO LIVE
+          Stop
         </button>
       ) : (
         <button
-          onClick={handlerIsLiveStream}
+          onClick={goLive}
           className="bg-blue-500 mt-2 text-white font-bold py-2 px-4 rounded">
           GO LIVE
         </button>

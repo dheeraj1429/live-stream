@@ -5,7 +5,7 @@ import { BadGatewayException, Inject, Logger } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 
 export interface LiveStreamPayloadInterface {
-  streamBuffer: Buffer;
+  streamBuffer: ArrayBuffer;
   liveStreamVideoId: string;
 }
 
@@ -37,5 +37,10 @@ export class SocketGatewayService {
       streamBuffer,
       liveStreamVideoId,
     });
+  }
+
+  @SubscribeMessage(EVENTS.STORE_LIVE_STREAM)
+  stopStream(_: Socket) {
+    this.videoTranscodeService.emit(KAFKA_SERVICES_MESSAGES.STOP_VIDEO_TRANSCODE_MESSAGE, {});
   }
 }
