@@ -1,19 +1,24 @@
-import { Type } from 'class-transformer';
 import { IsNotEmpty, IsString } from 'class-validator';
 
-export class VideoTranscodeDto {
+export class VideoStreamIdDto {
   @IsString()
   @IsNotEmpty()
   liveStreamVideoId: string;
+}
 
-  streamBuffer: Buffer;
+export class VideoTranscodeDto extends VideoStreamIdDto {
+  @IsNotEmpty()
+  chunk: any;
 }
 
 export class VideoTranscodeServiceDto {
-  @Type(() => VideoTranscodeDto)
   streamData: VideoTranscodeDto;
+}
 
+export class StopVideoTranscodeDto extends VideoStreamIdDto {}
+
+export class StopVideoTranscodeServiceDto extends StopVideoTranscodeDto {
   @IsString()
   @IsNotEmpty()
-  outDir: string;
+  outputFilePath: string;
 }

@@ -1,73 +1,107 @@
 import { DirectoryService } from '@app/common';
-import { Injectable, Logger } from '@nestjs/common';
-import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import { VideoTranscodeServiceDto } from './dtos';
+import {
+  BadGatewayException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
+import * as path from 'path';
+import { spawn } from 'child_process';
 
 @Injectable()
 export class VideoTranscodeService {
   protected readonly logger = new Logger(VideoTranscodeService.name);
-  private ffmpeg: ChildProcessWithoutNullStreams | null = null;
+  private streamVideoChunks: { [key: string]: Buffer[] } = {};
+  private readonly qualities: { resolution: string; bitrate: string }[] = [
+    { resolution: '1280x720', bitrate: '1500k' },
+  ];
 
   constructor(protected readonly directoryService: DirectoryService) {}
 
-  async videoTranscode({ streamData, outDir }: VideoTranscodeServiceDto) {
-    await this.directoryService.createDirectory(outDir);
+  async videoTranscode({ streamData }: VideoTranscodeServiceDto) {
+    const { liveStreamVideoId, chunk } = streamData;
 
-    const bufferData = Buffer.from(JSON.stringify(streamData.streamBuffer));
+    if (!this.streamVideoChunks[liveStreamVideoId]) {
+      this.streamVideoChunks[liveStreamVideoId] = [];
+    }
 
-    this.ffmpeg = spawn('ffmpeg', [
-      '-f',
-      'rawvideo',
-      '-pix_fmt',
-      'rgb24',
-      '-s',
-      '640x480',
-      '-r',
-      '30',
-      '-i',
-      'pipe:0',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-tune',
-      'zerolatency',
-      '-x264opts',
-      'keyint=30:min-keyint=30',
-      '-b:v',
-      '2000k',
-      '-g',
-      '60',
-      '-hls_time',
-      '2',
-      '-hls_list_size',
-      '6',
-      `${outDir}/output.m3u8`,
-    ]);
-
-    // Handle FFmpeg output
-    this.ffmpeg.stdout.on('data', (data) => {
-      console.log(`FFmpeg stdout: ${data}`);
-    });
-
-    this.ffmpeg.stderr.on('data', (data) => {
-      console.error(`FFmpeg stderr: ${data}`);
-    });
-
-    this.ffmpeg.on('close', (code) => {
-      console.log(`FFmpeg process exited with code ${code}`);
-    });
-
-    // Handle potential error when writing to FFmpeg stdin
-    this.ffmpeg.stdin.on('error', (err) => {
-      console.error(`Error writing to FFmpeg stdin: ${err}`);
-    });
-
-    this.ffmpeg.stdin.write(bufferData);
+    const bufferChunk = Buffer.from(chunk.data);
+    this.streamVideoChunks[liveStreamVideoId].push(bufferChunk);
+    console.log(this.streamVideoChunks[liveStreamVideoId]);
   }
 
-  async stopVideoTranscode() {
-    this.ffmpeg.stdin.end();
-    this.logger.log(`FFmpeg stopped video stream transcoding`);
+  async stopVideoTranscode({ liveStreamVideoId, outputFilePath }: StopVideoTranscodeServiceDto) {
+    const chunks = this.streamVideoChunks[liveStreamVideoId];
+    if (!chunks) throw new BadGatewayException('No video streams available');
+
+    const concatenatedBlob = new Blob(this.streamVideoChunks[liveStreamVideoId]);
+    console.log({ concatenatedBlob });
+    const buffer = Buffer.from(await concatenatedBlob.arrayBuffer());
+
+    console.log({ buffer });
+
+    for (let item of this.qualities) {
+      const outputPathWithResolution = path.join(outputFilePath, item.resolution);
+
+      await this.directoryService.createDirectory(outputPathWithResolution);
+
+      const args = [
+        '-i',
+        'pipe:0',
+        '-codec:v',
+        'libx264',
+        '-codec:a',
+        'aac',
+        '-vf',
+        `scale=${item.resolution}`,
+        '-b:v',
+        item.bitrate,
+        '-bufsize',
+        item.bitrate,
+        '-maxrate',
+        item.bitrate,
+        '-hls_time',
+        '10',
+        '-hls_playlist_type',
+        'vod',
+        `-hls_segment_filename`,
+        path.join(outputPathWithResolution, 'segment%03d.ts'),
+        '-start_number',
+        '0',
+        path.join(outputPathWithResolution, 'index.m3u8'),
+      ];
+
+      const ffmpeg = spawn('ffmpeg', args);
+      let ffmpegStderr = '';
+
+      ffmpeg.stdout.on('data', (data) => {
+        this.logger.log(`stdout: ${data}`);
+      });
+
+      ffmpeg.stderr.on('data', (data) => {
+        ffmpegStderr += data.toString();
+        this.logger.log(`stderr: ${data}`);
+      });
+
+      ffmpeg.on('close', (code: number) => {
+        if (code === 0) {
+          this.logger.log('Video segment ended successfully');
+        } else {
+          throw new InternalServerErrorException(
+            `ffmpeg process exited with code ${code}. Errors: ${ffmpegStderr}`,
+          );
+        }
+      });
+
+      ffmpeg.on('error', (err) => {
+        this.logger.error(err);
+      });
+
+      ffmpeg.stdin.write(buffer);
+      ffmpeg.stdin.end();
+    }
+
+    delete this.streamVideoChunks[liveStreamVideoId];
   }
 }
