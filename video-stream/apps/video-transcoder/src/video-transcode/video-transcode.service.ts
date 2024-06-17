@@ -24,6 +24,7 @@ export class VideoTranscodeService {
           liveStreamVideoId,
           item.resolution,
         );
+
         await this.directoryService.createDirectory(outputPathWithResolution);
 
         const args = [
