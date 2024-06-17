@@ -6,12 +6,12 @@ export class VideoTranscodeDto {
   @IsNotEmpty()
   liveStreamVideoId: string;
 
-  streamBuffer: ArrayBuffer;
+  streamBuffer: Buffer;
 }
 
 export class VideoTranscodeServiceDto {
-  // @Type(() => VideoTranscodeDto)
-  streamData: any;
+  @Type(() => VideoTranscodeDto)
+  streamData: VideoTranscodeDto;
 
   @IsString()
   @IsNotEmpty()

@@ -18,7 +18,7 @@ export const VideoCapture: React.FC = () => {
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
-      .then((stream) => {
+      .then((stream: MediaStream) => {
         if (videoElement) {
           videoElement.srcObject = stream;
 
@@ -26,9 +26,12 @@ export const VideoCapture: React.FC = () => {
             videoElement.play().catch((error) => console.error('Error playing video:', error));
           };
 
-          mediaRecorderRef.current = new MediaRecorder(stream);
+          const mediaRecorderOptions = {
+            mimeType: 'video/webm; codecs=vp8',
+            videoBitsPerSecond: 5000000,
+          };
+          mediaRecorderRef.current = new MediaRecorder(stream, mediaRecorderOptions);
           mediaRecorderRef.current.ondataavailable = handleDataAvailable;
-
           mediaRecorderRef.current.start(100);
         }
       })
@@ -49,12 +52,15 @@ export const VideoCapture: React.FC = () => {
       const streamBlob = event.data;
 
       if (isLiveRef.current && liveStreamVideoId.current) {
-        streamBlob.arrayBuffer().then((buffer) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const arrayBuffer = reader.result as ArrayBuffer;
           socket.emit(EVENTS.LIVE_STREAM, {
-            streamBuffer: buffer,
+            chunk: arrayBuffer,
             liveStreamVideoId: liveStreamVideoId.current,
           });
-        });
+        };
+        reader.readAsArrayBuffer(streamBlob);
       }
     }
   };
@@ -65,7 +71,7 @@ export const VideoCapture: React.FC = () => {
 
   const stopStreamVideo = () => {
     setIsLive(false);
-    socket.emit(EVENTS.STORE_LIVE_STREAM);
+    socket.emit(EVENTS.STORE_LIVE_STREAM, { liveStreamVideoId: liveStreamVideoId.current });
   };
 
   useEffect(() => {
@@ -73,7 +79,7 @@ export const VideoCapture: React.FC = () => {
     if (isLive) {
       liveStreamVideoId.current = uuidv4();
     } else {
-      liveStreamVideoId.current = null;
+      mediaRecorderRef.current?.stop();
     }
   }, [isLive]);
 

@@ -1,8 +1,8 @@
+import { KAFKA_SERVICES } from '@app/common';
 import { Module } from '@nestjs/common';
-import { SocketGatewayService } from './socket-gateway.service';
 import { ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { KAFKA_SERVICES } from '@app/common';
+import { SocketGatewayService } from './socket-gateway.service';
 
 @Module({
   imports: [

@@ -1,73 +1,69 @@
 import { DirectoryService } from '@app/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import * as path from 'path';
 import { VideoTranscodeServiceDto } from './dtos';
 
 @Injectable()
 export class VideoTranscodeService {
   protected readonly logger = new Logger(VideoTranscodeService.name);
-  private readonly qualities: { resolution: string; bitrate: string }[] = [
-    { resolution: '1280x720', bitrate: '1500k' },
-  ];
   private ffmpeg: ChildProcessWithoutNullStreams | null = null;
 
   constructor(protected readonly directoryService: DirectoryService) {}
 
   async videoTranscode({ streamData, outDir }: VideoTranscodeServiceDto) {
-    const buffer = Buffer.from(streamData.streamBuffer);
+    await this.directoryService.createDirectory(outDir);
 
-    for (let item of this.qualities) {
-      const outputPath = path.join(outDir, item.resolution);
+    const bufferData = Buffer.from(JSON.stringify(streamData.streamBuffer));
 
-      const args = [
-        '-i',
-        'pipe:0', // Input from pipe
-        '-codec:v',
-        'libx264', // Video codec
-        '-codec:a',
-        'aac', // Audio codec
-        '-vf',
-        `scale=${item.resolution}`, // Video scaling
-        '-b:v',
-        item.bitrate, // Video bitrate
-        '-bufsize',
-        item.bitrate, // Buffer size
-        '-maxrate',
-        item.bitrate, // Maximum bitrate
-        '-hls_time',
-        '10', // HLS segment duration
-        '-hls_playlist_type',
-        'vod', // HLS playlist type
-        '-hls_segment_filename',
-        path.join(outputPath, 'segment%03d.ts'), // Output segment filename
-        '-start_number',
-        '0', // Start segment number
-        '-f',
-        'mpegts', // Output format (MPEG transport stream)
-        '-', // Output to stdout
-      ];
+    this.ffmpeg = spawn('ffmpeg', [
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgb24',
+      '-s',
+      '640x480',
+      '-r',
+      '30',
+      '-i',
+      'pipe:0',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-tune',
+      'zerolatency',
+      '-x264opts',
+      'keyint=30:min-keyint=30',
+      '-b:v',
+      '2000k',
+      '-g',
+      '60',
+      '-hls_time',
+      '2',
+      '-hls_list_size',
+      '6',
+      `${outDir}/output.m3u8`,
+    ]);
 
-      this.ffmpeg = spawn('ffmpeg', args);
+    // Handle FFmpeg output
+    this.ffmpeg.stdout.on('data', (data) => {
+      console.log(`FFmpeg stdout: ${data}`);
+    });
 
-      this.ffmpeg.stdout.on('data', (data) => {
-        console.log(`FFmpeg stdout: ${data}`);
-      });
+    this.ffmpeg.stderr.on('data', (data) => {
+      console.error(`FFmpeg stderr: ${data}`);
+    });
 
-      this.ffmpeg.stderr.on('data', (data) => {
-        console.error(`FFmpeg stderr: ${data}`);
-      });
+    this.ffmpeg.on('close', (code) => {
+      console.log(`FFmpeg process exited with code ${code}`);
+    });
 
-      this.ffmpeg.on('close', (code) => {
-        console.log(`FFmpeg process exited with code ${code}`);
-      });
+    // Handle potential error when writing to FFmpeg stdin
+    this.ffmpeg.stdin.on('error', (err) => {
+      console.error(`Error writing to FFmpeg stdin: ${err}`);
+    });
 
-      this.ffmpeg.on('error', (err) => {
-        console.error(`FFmpeg error: ${err}`);
-      });
-
-      this.ffmpeg.stdin.write(buffer);
-    }
+    this.ffmpeg.stdin.write(bufferData);
   }
 
   async stopVideoTranscode() {

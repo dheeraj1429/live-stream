@@ -13,7 +13,8 @@ export class VideoTranscodeController {
 
   @MessagePattern(KAFKA_SERVICES_MESSAGES.VIDEO_TRANSCODE_MESSAGE)
   async videoTranscode(@Payload() payload: VideoTranscodeDto) {
-    const outDir = `/home/app/outputs/${payload.liveStreamVideoId}`;
+    // const outDir = `/home/app/outputs/${payload.liveStreamVideoId}`;
+    const outDir = `./outputs/${payload.liveStreamVideoId}`;
     return this.videoTranscodeService.videoTranscode({ streamData: payload, outDir });
   }
 
