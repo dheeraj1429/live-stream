@@ -17,8 +17,4 @@ export class VideoTranscodeServiceDto {
 
 export class StopVideoTranscodeDto extends VideoStreamIdDto {}
 
-export class StopVideoTranscodeServiceDto extends StopVideoTranscodeDto {
-  @IsString()
-  @IsNotEmpty()
-  outputFilePath: string;
-}
+export class StopVideoTranscodeServiceDto extends StopVideoTranscodeDto {}

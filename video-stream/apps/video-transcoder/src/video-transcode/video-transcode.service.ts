@@ -1,22 +1,15 @@
 import { DirectoryService } from '@app/common';
-import {
-  BadGatewayException,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
-import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
-import * as path from 'path';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
+import * as path from 'path';
+import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
 
 @Injectable()
 export class VideoTranscodeService {
   protected readonly logger = new Logger(VideoTranscodeService.name);
-  private streamVideoChunks: { [key: string]: Buffer[] } = {};
-  private readonly qualities: { resolution: string; bitrate: string }[] = [
-    { resolution: '1280x720', bitrate: '1500k' },
-    { resolution: '854x480', bitrate: '800k' },
-    { resolution: '640x360', bitrate: '500k' },
+  private ffmpegProcesses: { [key: string]: ChildProcessWithoutNullStreams } = {};
+  private readonly qualities: { resolution: string; bitrate: string; fr: string }[] = [
+    { resolution: '1280x720', bitrate: '2500k', fr: '60' },
   ];
 
   constructor(protected readonly directoryService: DirectoryService) {}
@@ -24,86 +17,87 @@ export class VideoTranscodeService {
   async videoTranscode({ streamData }: VideoTranscodeServiceDto) {
     const { liveStreamVideoId, chunk } = streamData;
 
-    if (!this.streamVideoChunks[liveStreamVideoId]) {
-      this.streamVideoChunks[liveStreamVideoId] = [];
+    if (!this.ffmpegProcesses[liveStreamVideoId]) {
+      for (let item of this.qualities) {
+        const outputPathWithResolution = path.join(
+          '/home/app/outputs',
+          liveStreamVideoId,
+          item.resolution,
+        );
+        await this.directoryService.createDirectory(outputPathWithResolution);
+
+        const args = [
+          '-fflags',
+          '+genpts',
+          '-use_wallclock_as_timestamps',
+          '1',
+          '-i',
+          'pipe:0',
+          '-codec:v',
+          'libx264',
+          '-codec:a',
+          'aac',
+          '-vf',
+          `scale=${item.resolution}`,
+          '-b:v',
+          item.bitrate,
+          '-bufsize',
+          item.bitrate,
+          '-maxrate',
+          item.bitrate,
+          '-r',
+          item.fr,
+          '-hls_time',
+          '5',
+          '-hls_playlist_type',
+          'event',
+          '-hls_segment_filename',
+          path.join(outputPathWithResolution, 'segment%03d.ts'),
+          '-vsync',
+          'cfr',
+          path.join(outputPathWithResolution, 'index.m3u8'),
+        ];
+
+        const ffmpegProcess = spawn('ffmpeg', args);
+        this.ffmpegProcesses[liveStreamVideoId] = ffmpegProcess;
+
+        let ffmpegStderr = '';
+
+        ffmpegProcess.stdout.on('data', (data) => {
+          this.logger.log(`stdout: ${data}`);
+        });
+
+        ffmpegProcess.stderr.on('data', (data) => {
+          ffmpegStderr += data.toString();
+          this.logger.log(`stderr: ${data}`);
+        });
+
+        ffmpegProcess.on('close', (code: number) => {
+          if (code !== 0) {
+            this.logger.error(`FFmpeg process exited with code ${code}. Errors: ${ffmpegStderr}`);
+          }
+        });
+
+        ffmpegProcess.on('error', (err) => {
+          this.logger.error(err);
+        });
+      }
     }
 
     const bufferChunk = Buffer.from(chunk.data);
-    this.streamVideoChunks[liveStreamVideoId].push(bufferChunk);
-    console.log(this.streamVideoChunks[liveStreamVideoId]);
+
+    // Write the bufferChunk to each FFmpeg process
+    this.ffmpegProcesses[liveStreamVideoId].stdin.write(bufferChunk);
   }
 
-  async stopVideoTranscode({ liveStreamVideoId, outputFilePath }: StopVideoTranscodeServiceDto) {
-    const chunks = this.streamVideoChunks[liveStreamVideoId];
-    if (!chunks) throw new BadGatewayException('No video streams available');
+  async stopVideoTranscode({ liveStreamVideoId }: StopVideoTranscodeServiceDto) {
+    const ffmpegProcess = this.ffmpegProcesses[liveStreamVideoId];
+    if (!ffmpegProcess) throw new BadGatewayException('No video streams process available');
 
-    const concatenatedBlob = new Blob(this.streamVideoChunks[liveStreamVideoId]);
-    console.log({ concatenatedBlob });
-    const buffer = Buffer.from(await concatenatedBlob.arrayBuffer());
-
-    console.log({ buffer });
-
-    for (let item of this.qualities) {
-      const outputPathWithResolution = path.join(outputFilePath, item.resolution);
-
-      await this.directoryService.createDirectory(outputPathWithResolution);
-
-      const args = [
-        '-i',
-        'pipe:0',
-        '-codec:v',
-        'libx264',
-        '-codec:a',
-        'aac',
-        '-vf',
-        `scale=${item.resolution}`,
-        '-b:v',
-        item.bitrate,
-        '-bufsize',
-        item.bitrate,
-        '-maxrate',
-        item.bitrate,
-        '-hls_time',
-        '10',
-        '-hls_playlist_type',
-        'vod',
-        `-hls_segment_filename`,
-        path.join(outputPathWithResolution, 'segment%03d.ts'),
-        '-start_number',
-        '0',
-        path.join(outputPathWithResolution, 'index.m3u8'),
-      ];
-
-      const ffmpeg = spawn('ffmpeg', args);
-      let ffmpegStderr = '';
-
-      ffmpeg.stdout.on('data', (data) => {
-        this.logger.log(`stdout: ${data}`);
-      });
-
-      ffmpeg.stderr.on('data', (data) => {
-        ffmpegStderr += data.toString();
-        this.logger.log(`stderr: ${data}`);
-      });
-
-      ffmpeg.on('close', (code: number) => {
-        if (code === 0) {
-          this.logger.log('Video segment ended successfully');
-        } else {
-          throw new InternalServerErrorException(
-            `ffmpeg process exited with code ${code}. Errors: ${ffmpegStderr}`,
-          );
-        }
-      });
-
-      ffmpeg.on('error', (err) => {
-        this.logger.error(err);
-      });
-
-      ffmpeg.stdin.write(buffer);
-      ffmpeg.stdin.end();
-    }
-
-    delete this.streamVideoChunks[liveStreamVideoId];
+    ffmpegProcess.stdin.end();
+    ffmpegProcess.on('close', () => {
+      this.logger.log('FFmpeg process ended successfully');
+      delete this.ffmpegProcesses[liveStreamVideoId];
+    });
   }
 }

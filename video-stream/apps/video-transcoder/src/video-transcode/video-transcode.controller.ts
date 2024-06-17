@@ -19,7 +19,6 @@ export class VideoTranscodeController {
 
   @MessagePattern(KAFKA_SERVICES_MESSAGES.STOP_VIDEO_TRANSCODE_MESSAGE)
   async stopVideoTranscode(@Payload() payload: StopVideoTranscodeDto) {
-    const outputFilePath = `/home/app/outputs/${payload.liveStreamVideoId}`;
-    return this.videoTranscodeService.stopVideoTranscode({ ...payload, outputFilePath });
+    return this.videoTranscodeService.stopVideoTranscode(payload);
   }
 }
