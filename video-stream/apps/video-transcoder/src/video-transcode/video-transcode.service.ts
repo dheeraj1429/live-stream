@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 
 @Injectable()
 export class VideoTranscodeService {
@@ -15,6 +15,8 @@ export class VideoTranscodeService {
   private streamVideoChunks: { [key: string]: Buffer[] } = {};
   private readonly qualities: { resolution: string; bitrate: string }[] = [
     { resolution: '1280x720', bitrate: '1500k' },
+    { resolution: '854x480', bitrate: '800k' },
+    { resolution: '640x360', bitrate: '500k' },
   ];
 
   constructor(protected readonly directoryService: DirectoryService) {}
