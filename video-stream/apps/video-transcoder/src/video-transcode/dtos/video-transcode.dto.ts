@@ -18,3 +18,21 @@ export class VideoTranscodeServiceDto {
 export class StopVideoTranscodeDto extends VideoStreamIdDto {}
 
 export class StopVideoTranscodeServiceDto extends StopVideoTranscodeDto {}
+
+export class CreateVideoTranscodeProcessDto {
+  @IsString()
+  @IsNotEmpty()
+  liveStreamVideoId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  resolution: string;
+
+  @IsString()
+  @IsNotEmpty()
+  bitrate: string;
+
+  @IsString()
+  @IsNotEmpty()
+  fr: string;
+}

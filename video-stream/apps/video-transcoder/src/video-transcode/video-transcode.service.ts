@@ -7,9 +7,10 @@ import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
 @Injectable()
 export class VideoTranscodeService {
   protected readonly logger = new Logger(VideoTranscodeService.name);
-  private ffmpegProcesses: { [key: string]: ChildProcessWithoutNullStreams } = {};
+  private ffmpegProcesses: { [key: string]: ChildProcessWithoutNullStreams | {} } = {};
   private readonly qualities: { resolution: string; bitrate: string; fr: string }[] = [
     { resolution: '1280x720', bitrate: '2500k', fr: '60' },
+    { resolution: '720x480', bitrate: '1500k', fr: '30' },
   ];
 
   constructor(protected readonly directoryService: DirectoryService) {}
@@ -18,6 +19,8 @@ export class VideoTranscodeService {
     const { liveStreamVideoId, chunk } = streamData;
 
     if (!this.ffmpegProcesses[liveStreamVideoId]) {
+      this.ffmpegProcesses[liveStreamVideoId] = {};
+
       for (let item of this.qualities) {
         const outputPathWithResolution = path.join(
           '/home/app/outputs',
@@ -60,8 +63,7 @@ export class VideoTranscodeService {
         ];
 
         const ffmpegProcess = spawn('ffmpeg', args);
-        this.ffmpegProcesses[liveStreamVideoId] = ffmpegProcess;
-
+        this.ffmpegProcesses[liveStreamVideoId][item.resolution] = ffmpegProcess;
         let ffmpegStderr = '';
 
         ffmpegProcess.stdout.on('data', (data) => {
@@ -76,6 +78,7 @@ export class VideoTranscodeService {
         ffmpegProcess.on('close', (code: number) => {
           if (code !== 0) {
             this.logger.error(`FFmpeg process exited with code ${code}. Errors: ${ffmpegStderr}`);
+            process.exit(1);
           }
         });
 
@@ -86,19 +89,22 @@ export class VideoTranscodeService {
     }
 
     const bufferChunk = Buffer.from(chunk.data);
-
-    // Write the bufferChunk to each FFmpeg process
-    this.ffmpegProcesses[liveStreamVideoId].stdin.write(bufferChunk);
+    for (let resolution in this.ffmpegProcesses[liveStreamVideoId]) {
+      this.ffmpegProcesses[liveStreamVideoId][resolution].stdin.write(bufferChunk);
+    }
   }
 
   async stopVideoTranscode({ liveStreamVideoId }: StopVideoTranscodeServiceDto) {
-    const ffmpegProcess = this.ffmpegProcesses[liveStreamVideoId];
-    if (!ffmpegProcess) throw new BadGatewayException('No video streams process available');
+    const ffmpegProcesses = this.ffmpegProcesses[liveStreamVideoId];
+    if (!ffmpegProcesses) throw new BadGatewayException('No video streams process available');
 
-    ffmpegProcess.stdin.end();
-    ffmpegProcess.on('close', () => {
-      this.logger.log('FFmpeg process ended successfully');
-      delete this.ffmpegProcesses[liveStreamVideoId];
-    });
+    for (let resolution in ffmpegProcesses) {
+      const ffmpegProcess = ffmpegProcesses[resolution];
+      ffmpegProcess.stdin.end();
+      ffmpegProcess.on('close', () => {
+        this.logger.log(`FFmpeg process for resolution ${resolution} ended successfully`);
+      });
+    }
+    delete this.ffmpegProcesses[liveStreamVideoId];
   }
 }

@@ -12,5 +12,4 @@ COPY nest-cli.json nest-cli.json
 # Development stage
 FROM base as development
 RUN cd apps/video-stream-io && npm install
-EXPOSE 9090
 CMD [ "npm", "run", "start:dev", "video-stream-io" ]

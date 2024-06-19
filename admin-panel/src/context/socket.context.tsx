@@ -3,7 +3,7 @@
 import { createContext, useContext } from 'react';
 import io, { Socket } from 'socket.io-client';
 
-const SOCKET_BACKEND_URL = 'http://localhost:9090';
+const SOCKET_BACKEND_URL = 'http://localhost';
 
 export interface Context {
   socket: Socket;
