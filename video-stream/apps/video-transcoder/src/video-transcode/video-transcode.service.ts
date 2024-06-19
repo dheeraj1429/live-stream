@@ -2,7 +2,11 @@ import { DirectoryService } from '@app/common';
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as path from 'path';
-import { StopVideoTranscodeServiceDto, VideoTranscodeServiceDto } from './dtos';
+import {
+  CreateVideoTranscodeProcessDto,
+  StopVideoTranscodeServiceDto,
+  VideoTranscodeServiceDto,
+} from './dto';
 
 @Injectable()
 export class VideoTranscodeService {
@@ -15,6 +19,54 @@ export class VideoTranscodeService {
 
   constructor(protected readonly directoryService: DirectoryService) {}
 
+  private async videoTranscodeProcess({
+    liveStreamVideoId,
+    resolution,
+    bitrate,
+    fr,
+  }: CreateVideoTranscodeProcessDto): Promise<ChildProcessWithoutNullStreams> {
+    const outputPathWithResolution = path.join(
+      '/home/app/video-transcoder/outputs',
+      liveStreamVideoId,
+      resolution,
+    );
+    await this.directoryService.createDirectory(outputPathWithResolution);
+
+    const args = [
+      '-fflags',
+      '+genpts',
+      '-use_wallclock_as_timestamps',
+      '1',
+      '-i',
+      'pipe:0',
+      '-codec:v',
+      'libx264',
+      '-codec:a',
+      'aac',
+      '-vf',
+      `scale=${resolution}`,
+      '-b:v',
+      bitrate,
+      '-bufsize',
+      bitrate,
+      '-maxrate',
+      bitrate,
+      '-r',
+      fr,
+      '-hls_time',
+      '5',
+      '-hls_playlist_type',
+      'event',
+      '-hls_segment_filename',
+      path.join(outputPathWithResolution, 'segment%03d.ts'),
+      '-vsync',
+      'cfr',
+      path.join(outputPathWithResolution, 'index.m3u8'),
+    ];
+
+    return spawn('ffmpeg', args);
+  }
+
   async videoTranscode({ streamData }: VideoTranscodeServiceDto) {
     const { liveStreamVideoId, chunk } = streamData;
 
@@ -22,47 +74,12 @@ export class VideoTranscodeService {
       this.ffmpegProcesses[liveStreamVideoId] = {};
 
       for (let item of this.qualities) {
-        const outputPathWithResolution = path.join(
-          '/home/app/outputs',
+        const ffmpegProcess = await this.videoTranscodeProcess({
           liveStreamVideoId,
-          item.resolution,
-        );
-
-        await this.directoryService.createDirectory(outputPathWithResolution);
-
-        const args = [
-          '-fflags',
-          '+genpts',
-          '-use_wallclock_as_timestamps',
-          '1',
-          '-i',
-          'pipe:0',
-          '-codec:v',
-          'libx264',
-          '-codec:a',
-          'aac',
-          '-vf',
-          `scale=${item.resolution}`,
-          '-b:v',
-          item.bitrate,
-          '-bufsize',
-          item.bitrate,
-          '-maxrate',
-          item.bitrate,
-          '-r',
-          item.fr,
-          '-hls_time',
-          '5',
-          '-hls_playlist_type',
-          'event',
-          '-hls_segment_filename',
-          path.join(outputPathWithResolution, 'segment%03d.ts'),
-          '-vsync',
-          'cfr',
-          path.join(outputPathWithResolution, 'index.m3u8'),
-        ];
-
-        const ffmpegProcess = spawn('ffmpeg', args);
+          resolution: item.resolution,
+          bitrate: item.bitrate,
+          fr: item.fr,
+        });
         this.ffmpegProcesses[liveStreamVideoId][item.resolution] = ffmpegProcess;
         let ffmpegStderr = '';
 

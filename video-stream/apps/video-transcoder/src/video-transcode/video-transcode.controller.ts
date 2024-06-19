@@ -1,7 +1,7 @@
 import { KAFKA_SERVICES_MESSAGES, RCPValidationException } from '@app/common';
 import { Controller, Logger, UseFilters, UsePipes, ValidationPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { StopVideoTranscodeDto, VideoTranscodeDto } from './dtos';
+import { StopVideoTranscodeDto, VideoTranscodeDto } from './dto';
 import { VideoTranscodeService } from './video-transcode.service';
 
 @Controller('video-transcode')
